@@ -29,7 +29,7 @@ void* arena_push(Mem_Arena* arena, u64 size) {
 }
 
 void arena_pop(Mem_Arena* arena, u64 size) {
-  if (arena->offset - size < 0) {
+  if(size > arena->offset) {
     arena->offset = 0;
   } else {
     arena->offset -= size;
