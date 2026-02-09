@@ -2,40 +2,33 @@
 #include "print.h"
 #include <stdlib.h>
 
-// TODO: make a real implementation
+#define ALIGN_UP_POW2(n, p) (((u64)(n) + (u64)(p) - 1)) & (~(u64)(p) - 1)
 
-Arena arena_create(u64 size) {
-  Arena a = (Arena){
-      .size   = size,
-      .buffer = malloc(size),
-      .offset = 0,
-  };
-  return a;
+Mem_Arena arena_create(u64 capacity) {
+  Mem_Arena arena = {0};
+  arena.buffer    = (u16*)malloc(capacity);
+  arena.capacity  = capacity;
+  arena.offset    = 0;
+  return arena;
 }
 
-void arena_destroy(Arena* arena) { free(arena->buffer); }
+void arena_destroy(Mem_Arena* arena) { free(arena); }
 
-// aligns allocations to make CPU happy
-u64 align(u64 pointer, u64 alignment) {
-  u64 added_padding = alignment - 1;
-  u64 mask          = ~(added_padding);
-  return (pointer + added_padding) & mask;
-}
+void* arena_push(Mem_Arena* arena, u64 size) {
+  u64  align_offset = ALIGN_UP_POW2(arena->offset, sizeof(*arena->buffer));
+  u16* memory       = &arena->buffer[arena->offset];
 
-void* arena_alloc(Arena* arena, u64 size, u64 alignment) {
-  u64 current_ptr  = (u64)arena->buffer + arena->offset;
-  u64 offset       = align(current_ptr, alignment);
-  offset          -= (u64)arena->buffer; // get back to relative offset
-
-  if ((offset + size) <= arena->size) {
-    void* ptr      = &arena->buffer[offset];
-    arena->offset += offset + size;
-    return ptr;
+  u64 new_offset = align_offset + size;
+  if (new_offset > arena->capacity) {
+    return NULL;
   }
-  print("\n!!!arena out of memory!!!\n");
-  return NULL;
+
+  arena->offset = new_offset;
+
+  return memory;
 }
 
-void arena_free(Arena* arena, u64 size) {
+void arena_pop(Mem_Arena* arena, u64 size) {
+  size         = (arena->offset - size) > 0 ? size : 0;
   arena->offset -= size;
 }

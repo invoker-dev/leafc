@@ -6,22 +6,19 @@
 
 typedef struct {
   u16* buffer;
-  u64  size;
+  u64  capacity;
   u64  offset;
-} Arena;
+} Mem_Arena;
 
-Arena arena_create(u64 size);
-void  arena_destroy(Arena* arena);
-void* arena_alloc(Arena* arena, u64 size, u64 alignment);
-void  arena_free(Arena* arena, u64 size);
+Mem_Arena arena_create(u64 capacity);
+void      arena_destroy(Mem_Arena* arena);
+void*     arena_push(Mem_Arena*, u64 size);
+void      arena_pop(Mem_Arena* arena, u64 size);
+void      arena_clear(Mem_Arena* arena);
 
-#define arena_alloc_array(arena, type, count)                                  \
-  (type*)arena_alloc((arena), sizeof(type) * count, alignof(type))
+#define ARENA_PUSH_STRUCT(arena, T) (arena_push(arena, sizeof(T))) 
+#define ARENA_PUSH_ARRAY(arena, T, n) (arena_push(arena, sizeof(T) * (n)))
 
-#define arena_free_array(arena, type, count)                                  \
-  (type*)arena_free((arena), sizeof(type) * count)
-
-#define arena_alloc_struct(arena, type)                                        \
-  (type*)arena_alloc((arena), sizeof(type), alignof(type))
-
+#define ARENA_POP_STRUCT(arena, T) (arena_pop(arena, sizeof(T)))
+#define ARENA_POP_ARRAY(arena, T, n) (arena_pop(arena, sizeof(T) * n))
 #endif
