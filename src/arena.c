@@ -23,7 +23,6 @@ void* arena_push(Mem_Arena* arena, u64 size) {
   if (new_offset > arena->capacity) {
     return NULL;
   }
-
   arena->offset = new_offset;
 
   return memory;

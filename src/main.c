@@ -16,7 +16,7 @@
 #include <volk.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-#define vk_check(result)                                                       \
+#define VK_CHECK(result)                                                       \
   {                                                                            \
     if (result != VK_SUCCESS) {                                                \
       print("Vulkan call at %d returned an error: %s\n", __LINE__,             \
@@ -24,25 +24,24 @@
     }                                                                          \
   }
 
-#define sdl_check(result)                                                      \
+#define SDL_CHECK(result)                                                      \
   {                                                                            \
     if (result == 0) {                                                         \
       print("SDL call returned an error: %s\n", SDL_GetError());               \
     }                                                                          \
   }
 
+// TODO: abstract the stages (LATER!)
 // TODO: make dynamic array impl
-// TODO: fix arena
 // TODO: 1. manual vertex data, cube
 // TODO: 2. load gltf / some type of vertex data
 
 typedef struct {
 
-  Arena      arena;
+  Mem_Arena  perm_arena;
   VkInstance instance;
 
-  VkPhysicalDevice*        GPUs;
-  u32                      GPUIndex;
+  VkPhysicalDevice         GPU;
   VkQueueFamilyProperties* queueFamilies;
   u32                      queueFamilyIndex;
 
@@ -69,23 +68,23 @@ typedef struct {
 int main(void) {
 
   VulkanContext ctx = {0};
+  ctx.perm_arena    = arena_create(GiB(1));
 
-  ctx.arena = arena_create(1024 * 1024 * 1024);
-
-  sdl_check(SDL_Init(SDL_INIT_VIDEO));
-  sdl_check(SDL_Vulkan_LoadLibrary(NULL));
+  SDL_CHECK(SDL_Init(SDL_INIT_VIDEO));
+  SDL_CHECK(SDL_Vulkan_LoadLibrary(NULL));
 
   if (volkInitialize() != VK_SUCCESS) {
     return 1;
   }
 
-  // NOTE: maybe move this somewhere else?
-
   VkApplicationInfo appInfo = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
                                .pApplicationName = "leafc",
                                .apiVersion       = VK_API_VERSION_1_3};
 
+  /////////////////////////////////
   // fetch platform specific extensions
+  /////////////////////////////////
+
   u32                sdlExtensionCount = 0;
   const char* const* sdlExtensions =
       SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
@@ -93,7 +92,7 @@ int main(void) {
   // WARN: This is bad, fix dynamic arrays
   u32          totalExtensionCount = sdlExtensionCount + 1;
   const char** extensions =
-      arena_alloc_array(&ctx.arena, const char*, sdlExtensionCount + 1); // <-
+      ARENA_PUSH_ARRAY(&ctx.perm_arena, const char*, totalExtensionCount);
   for (u32 i = 0; i < sdlExtensionCount; ++i) {
     extensions[i] = sdlExtensions[i];
   }
@@ -106,7 +105,7 @@ int main(void) {
   u32 layerCount = 0;
   vkEnumerateInstanceLayerProperties(&layerCount, NULL);
   VkLayerProperties* availableLayers =
-      arena_alloc_array(&ctx.arena, VkLayerProperties, layerCount);
+      ARENA_PUSH_ARRAY(&ctx.perm_arena, VkLayerProperties, layerCount);
   vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
 
   bool layerFound = false;
@@ -142,28 +141,35 @@ int main(void) {
       .pNext                   = &debugCI,
   };
 
-  vk_check(vkCreateInstance(&instanceCI, NULL, &ctx.instance));
+  VK_CHECK(vkCreateInstance(&instanceCI, NULL, &ctx.instance));
   volkLoadInstance(ctx.instance);
 
+  /////////////////////////////////
   // Device selection
+  /////////////////////////////////
   u32 deviceCount = 0;
-  vk_check(vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, NULL));
-  ctx.GPUs = arena_alloc_array(&ctx.arena, VkPhysicalDevice, deviceCount);
-  vk_check(vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, ctx.GPUs));
+  VK_CHECK(vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, NULL));
+  VkPhysicalDevice* availableGPUs =
+      ARENA_PUSH_ARRAY(&ctx.perm_arena, VkPhysicalDevice, deviceCount);
+  VK_CHECK(
+      vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, availableGPUs));
+
+  ctx.GPU = availableGPUs[0]; // OUR GPU!!!
 
   VkPhysicalDeviceProperties2 deviceProperties = {0};
   deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-  vkGetPhysicalDeviceProperties2(ctx.GPUs[ctx.GPUIndex], &deviceProperties);
+  vkGetPhysicalDeviceProperties2(ctx.GPU, &deviceProperties);
   print("selected device: %s\n", deviceProperties.properties.deviceName);
 
+  /////////////////////////////////
   // Queues
+  /////////////////////////////////
   u32 queueFamilyCount = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(ctx.GPUs[ctx.GPUIndex],
-                                           &queueFamilyCount, NULL);
-  VkQueueFamilyProperties* queueFamilies =
-      arena_alloc_array(&ctx.arena, VkQueueFamilyProperties, queueFamilyCount);
-  vkGetPhysicalDeviceQueueFamilyProperties(ctx.GPUs[ctx.GPUIndex],
-                                           &queueFamilyCount, queueFamilies);
+  vkGetPhysicalDeviceQueueFamilyProperties(ctx.GPU, &queueFamilyCount, NULL);
+  VkQueueFamilyProperties* queueFamilies = ARENA_PUSH_ARRAY(
+      &ctx.perm_arena, VkQueueFamilyProperties, queueFamilyCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(ctx.GPU, &queueFamilyCount,
+                                           queueFamilies);
   // find a queue with graphics support
   for (u32 i = 0; i < queueFamilyCount; ++i) {
     if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -173,8 +179,8 @@ int main(void) {
   }
 
   // check if queue supports presentation
-  sdl_check(SDL_Vulkan_GetPresentationSupport(
-      ctx.instance, ctx.GPUs[ctx.GPUIndex], ctx.queueFamilyIndex));
+  SDL_CHECK(SDL_Vulkan_GetPresentationSupport(ctx.instance, ctx.GPU,
+                                              ctx.queueFamilyIndex));
 
   const f32               queueFamilyPriorities = 1.0f;
   VkDeviceQueueCreateInfo queueCI               = {
@@ -184,8 +190,9 @@ int main(void) {
                     .pQueuePriorities = &queueFamilyPriorities,
   };
 
-  // WARN: make this an array if more extensions needed
-  const char* const deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+  /////////////////////////////////
+  // Feature check!
+  /////////////////////////////////
 
   // explanation of some of the features enabled, from www.howtovulkan.com
   // * Dynamic rendering - Greatly simplifies render pass setup, one of the most
@@ -213,6 +220,8 @@ int main(void) {
       .dynamicRendering = true,
       .pNext            = &enabledVk12Features};
 
+  const char* const deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
   VkDeviceCreateInfo deviceCI = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
                                  .pNext = &enabledVk13Features,
                                  .queueCreateInfoCount    = 1,
@@ -221,20 +230,20 @@ int main(void) {
                                  .ppEnabledExtensionNames = deviceExtensions,
                                  .pEnabledFeatures = &enabledVk10Features};
 
-  vk_check(
-      vkCreateDevice(ctx.GPUs[ctx.GPUIndex], &deviceCI, NULL, &ctx.device));
+  VK_CHECK(vkCreateDevice(ctx.GPU, &deviceCI, NULL, &ctx.device));
 
   VmaAllocatorCreateInfo allocatorCI = {
       .flags            = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-      .physicalDevice   = ctx.GPUs[ctx.GPUIndex],
+      .physicalDevice   = ctx.GPU,
       .device           = ctx.device,
       .pVulkanFunctions = NULL,
       .instance         = ctx.instance};
 
-  vk_check(vmaCreateAllocator(&allocatorCI, &ctx.allocator));
+  VK_CHECK(vmaCreateAllocator(&allocatorCI, &ctx.allocator));
 
+  ///////////////////////////////////
   // SDL !!!
-
+  ///////////////////////////////////
   ctx.sdl_window = SDL_CreateWindow("leafc", 1280u, 720u,
                                     SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
   if (!ctx.sdl_window) {
@@ -242,12 +251,12 @@ int main(void) {
   }
 
   // request a surface from SDL
-  sdl_check(SDL_Vulkan_CreateSurface(ctx.sdl_window, ctx.instance, NULL,
+  SDL_CHECK(SDL_Vulkan_CreateSurface(ctx.sdl_window, ctx.instance, NULL,
                                      &ctx.surface));
 
   VkSurfaceCapabilitiesKHR surfaceCapabilities = {0};
-  vk_check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-      ctx.GPUs[ctx.GPUIndex], ctx.surface, &surfaceCapabilities));
+  VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(ctx.GPU, ctx.surface,
+                                                     &surfaceCapabilities));
 
   if (surfaceCapabilities.currentExtent.width == UINT32_MAX ||
       surfaceCapabilities.currentExtent.height == UINT32_MAX) {
@@ -258,7 +267,9 @@ int main(void) {
     surfaceCapabilities.currentExtent.height = h;
   }
 
-  // swapchain
+  ///////////////////////////////////
+  // SWAPCHAIN
+  ///////////////////////////////////
   ctx.imageFormat                      = VK_FORMAT_B8G8R8A8_SRGB;
   VkSwapchainCreateInfoKHR swapchainCI = {
       .sType           = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -276,27 +287,29 @@ int main(void) {
       .presentMode      = VK_PRESENT_MODE_FIFO_KHR  // Vsync
   };
 
-  vk_check(
+  VK_CHECK(
       vkCreateSwapchainKHR(ctx.device, &swapchainCI, NULL, &ctx.swapchain));
 
   u32 imageCount = 0;
-  vk_check(
+  VK_CHECK(
       vkGetSwapchainImagesKHR(ctx.device, ctx.swapchain, &imageCount, NULL));
-  ctx.swapchainImages = arena_alloc_array(&ctx.arena, VkImage, imageCount);
-  vk_check(vkGetSwapchainImagesKHR(ctx.device, ctx.swapchain, &imageCount,
+  ctx.swapchainImages = ARENA_PUSH_ARRAY(&ctx.perm_arena, VkImage, imageCount);
+  VK_CHECK(vkGetSwapchainImagesKHR(ctx.device, ctx.swapchain, &imageCount,
                                    ctx.swapchainImages));
   ctx.swapchainImageViews =
-      arena_alloc_array(&ctx.arena, VkImageView, imageCount);
+      ARENA_PUSH_ARRAY(&ctx.perm_arena, VkImageView, imageCount);
 
-  // check which depth format GPU supports
+  ///////////////////////////////////
+  // DEPTH IMAGES
+  ///////////////////////////////////
   const VkFormat depthFormatList[] = {VK_FORMAT_D32_SFLOAT_S8_UINT,
                                       VK_FORMAT_D24_UNORM_S8_UINT};
 
   for (int i = 0; i < 2; ++i) {
     VkFormatProperties2 formatProperties = {0};
     formatProperties.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
-    vkGetPhysicalDeviceFormatProperties2(ctx.GPUs[ctx.GPUIndex],
-                                         depthFormatList[i], &formatProperties);
+    vkGetPhysicalDeviceFormatProperties2(ctx.GPU, depthFormatList[i],
+                                         &formatProperties);
     if (formatProperties.formatProperties.optimalTilingFeatures &
         VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
       ctx.depthFormat = depthFormatList[i];
@@ -322,7 +335,7 @@ int main(void) {
   VmaAllocationCreateInfo allocCI = {
       .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
       .usage = VMA_MEMORY_USAGE_AUTO};
-  vk_check(vmaCreateImage(ctx.allocator, &depthImageCI, &allocCI,
+  VK_CHECK(vmaCreateImage(ctx.allocator, &depthImageCI, &allocCI,
                           &ctx.depthImage, &ctx.depthImageAllocation, NULL));
 
   VkImageViewCreateInfo depthImageViewCI = {
@@ -335,10 +348,9 @@ int main(void) {
                            .layerCount = 1}
   };
 
-  vk_check(vkCreateImageView(ctx.device, &depthImageViewCI, NULL,
+  VK_CHECK(vkCreateImageView(ctx.device, &depthImageViewCI, NULL,
                              &ctx.depthImageView));
 
-  // vertex data !
 
 
   return 0;

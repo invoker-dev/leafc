@@ -16,4 +16,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+#define KiB(n) ((u64)(n) << 10)
+#define MiB(n) ((u64)(n) << 20)
+#define GiB(n) ((u64)(n) << 30)
+
 #endif
