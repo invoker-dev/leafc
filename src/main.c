@@ -338,5 +338,8 @@ int main(void) {
   vk_check(vkCreateImageView(ctx.device, &depthImageViewCI, NULL,
                              &ctx.depthImageView));
 
+  // vertex data !
+
+
   return 0;
 }
