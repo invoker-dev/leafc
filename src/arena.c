@@ -2,6 +2,7 @@
 #include "print.h"
 #include <stdlib.h>
 
+// aligns n to the alignment p
 #define ALIGN_UP_POW2(n, p) (((u64)(n) + (u64)(p) - 1)) & (~(u64)(p) - 1)
 
 Mem_Arena arena_create(u64 capacity) {
@@ -15,7 +16,7 @@ Mem_Arena arena_create(u64 capacity) {
 void arena_destroy(Mem_Arena* arena) { free(arena); }
 
 void* arena_push(Mem_Arena* arena, u64 size) {
-  u64  align_offset = ALIGN_UP_POW2(arena->offset, sizeof(*arena->buffer));
+  u64  align_offset = ALIGN_UP_POW2(arena->offset, sizeof(u16));
   u16* memory       = &arena->buffer[arena->offset];
 
   u64 new_offset = align_offset + size;
@@ -29,6 +30,9 @@ void* arena_push(Mem_Arena* arena, u64 size) {
 }
 
 void arena_pop(Mem_Arena* arena, u64 size) {
-  size         = (arena->offset - size) > 0 ? size : 0;
-  arena->offset -= size;
+  if (arena->offset - size < 0) {
+    arena->offset = 0;
+  } else {
+    arena->offset -= size;
+  }
 }
