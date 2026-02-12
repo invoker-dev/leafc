@@ -14,7 +14,7 @@ Mem_Arena arena_create(u64 capacity);
 void      arena_destroy(Mem_Arena* arena);
 void*     arena_push(Mem_Arena*, u64 size);
 void      arena_pop(Mem_Arena* arena, u64 size);
-void      arena_clear(Mem_Arena* arena);
+// void      arena_clear(Mem_Arena* arena);
 
 #define ARENA_PUSH_STRUCT(arena, T) (arena_push(arena, sizeof(T))) 
 #define ARENA_PUSH_ARRAY(arena, T, n) (arena_push(arena, sizeof(T) * (n)))

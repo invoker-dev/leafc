@@ -8,7 +8,7 @@
 typedef struct {
   mat4 projection;
   mat4 view;
-  mat4 model[3];
+  mat4 model;
   vec4 lightPos;
   u32  selected;
 } ShaderData;
