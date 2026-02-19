@@ -5,15 +5,15 @@
 #include <stdint.h>
 
 typedef struct {
-  u16* buffer;
+  u8* buffer;
   u64  capacity;
   u64  offset;
-} Mem_Arena;
+} MemoryArena;
 
-Mem_Arena arena_create(u64 capacity);
-void      arena_destroy(Mem_Arena* arena);
-void*     arena_push(Mem_Arena*, u64 size);
-void      arena_pop(Mem_Arena* arena, u64 size);
+MemoryArena arena_create(u64 capacity);
+void      arena_destroy(MemoryArena* arena);
+void*     arena_push(MemoryArena*, u64 size);
+void      arena_pop(MemoryArena* arena, u64 size);
 // void      arena_clear(Mem_Arena* arena);
 
 #define ARENA_PUSH_STRUCT(arena, T) (arena_push(arena, sizeof(T))) 
