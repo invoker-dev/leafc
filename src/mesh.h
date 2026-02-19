@@ -8,4 +8,4 @@ typedef struct {
 } Vertex;
 
 
-void generate_cube(Vertex* vertices, u16* indices);
+void genCube(Vertex* vertices, u16* indices);
