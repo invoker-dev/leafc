@@ -1,5 +1,6 @@
 #include "print.h"
 #include "vulkan/vulkan_core.h"
+#include <stdio.h>
 
 void print(const char* fmt, ...) {
   char    buf[2048];
@@ -7,7 +8,7 @@ void print(const char* fmt, ...) {
   va_start(args, fmt);
   stbsp_vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
-  fputs(buf, stdout);
+  fputs(buf, stderr); // NOTE: stderr ok?
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL
