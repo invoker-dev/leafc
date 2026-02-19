@@ -1,4 +1,6 @@
 build/
 bin/
-.gdb_history
 .cache/
+log/
+
+.gdb_history
